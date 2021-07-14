@@ -1,9 +1,10 @@
 import datetime
-
+import random
 from flask import Blueprint
 from flask import render_template, request, redirect, url_for, jsonify
 from flask import g
 
+from faker import Faker
 from . import db
 
 bp = Blueprint("pets", "pets", url_prefix="")
@@ -18,8 +19,20 @@ def format_date(d):
 
 @bp.route("/search/<field>/<value>")
 def search(field, value):
-    # TBD
-    return ""
+    # TODO
+    conn = db.get_db()
+    cursor = conn.cursor()
+    oby = request.args.get("order_by","id")
+    order = request.args.get("order","asc")
+    
+    if order == "asc":
+        cursor.execute(f"select p.id, p.name, p.bought, p.sold, s.name from pet p, animal s,tags_pets tp ,tag t where p.species = s.id and tp.pet = p.id and tp.tag = t.id and t.name = ? order by p.{oby}",[value])
+    else:
+        cursor.execute(f"select p.id, p.name, p.bought, p.sold, s.name from pet p, animal s,tags_pets tp ,tag t where p.species = s.id and tp.pet = p.id and tp.tag = t.id and t.name = ? order by p.{oby} desc",[value])
+    pets = cursor.fetchall()
+    
+    
+    return render_template('search.html',pets =pets,field = field,value=value,order = "desc" if order == "asc" else "asc")
 
 @bp.route("/")
 def dashboard():
@@ -27,12 +40,13 @@ def dashboard():
     cursor = conn.cursor()
     oby = request.args.get("order_by", "id") # TODO. This is currently not used. 
     order = request.args.get("order", "asc")
+    
     if order == "asc":
-        cursor.execute(f"select p.id, p.name, p.bought, p.sold, s.name from pet p, animal s where p.species = s.id order by p.id")
+        cursor.execute(f"select p.id, p.name, p.bought, p.sold, s.name from pet p, animal s where p.species = s.id order by p.{oby}")
     else:
-        cursor.execute(f"select p.id, p.name, p.bought, p.sold, s.name from pet p, animal s where p.species = s.id order by p.id desc")
+        cursor.execute(f"select p.id, p.name, p.bought, p.sold, s.name from pet p, animal s where p.species = s.id order by p.{oby} desc")
     pets = cursor.fetchall()
-    return render_template('index.html', pets = pets, order="desc" if order=="asc" else "asc")
+    return render_template('index.html',pets = pets, order="desc" if order=="asc" else "asc")
 
 
 @bp.route("/<pid>")
@@ -41,6 +55,10 @@ def pet_info(pid):
     cursor = conn.cursor()
     cursor.execute("select p.name, p.bought, p.sold, p.description, s.name from pet p, animal s where p.species = s.id and p.id = ?", [pid])
     pet = cursor.fetchone()
+    
+    if not pet:
+        return render_template("petdetail.html"),404
+        
     cursor.execute("select t.name from tags_pets tp, tag t where tp.pet = ? and tp.tag = t.id", [pid])
     tags = (x[0] for x in cursor.fetchall())
     name, bought, sold, description, species = pet
@@ -74,7 +92,20 @@ def edit(pid):
     elif request.method == "POST":
         description = request.form.get('description')
         sold = request.form.get("sold")
+        cursor.execute("UPDATE pet SET description = ? WHERE id = ?",[description,pid])
+        if sold == None:
+            cursor.execute("update pet set sold = ? where id = ?",["",pid])
+        else:
+            cursor.execute("select p.bought from pet p where p.id = ?", [pid])
+            bought = cursor.fetchone()
+            bought = datetime.datetime.strptime(bought[0],'%Y-%m-%d').date()
+            
+            sold = bought + datetime.timedelta(days=random.randint(5, 30))
+            cursor.execute("update pet set sold = ? where id = ?",[sold,pid])
+            
+            
         # TODO Handle sold
+        conn.commit()
         return redirect(url_for("pets.pet_info", pid=pid), 302)
         
     

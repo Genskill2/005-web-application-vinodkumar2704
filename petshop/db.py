@@ -55,7 +55,6 @@ def init_db():
             selected = set(random.choice(tags) for _ in range(random.randint(1, len(tags)//2)))
             for tag in selected:
                 cur.execute("INSERT INTO tags_pets (pet, tag) VALUES (?, (SELECT id FROM tag WHERE name=?))", [pet_id, tag])
-
     click.echo("Species and pets added")
     cur.close()
     db.commit()
